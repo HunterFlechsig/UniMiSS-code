@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH -J ricord
 #SBATCH -A grp_jliang12
-#SBATCH -p private
-#SBATCH -q private
+#SBATCH -p public
+#SBATCH -q public
 #SBATCH -G 1
 #SBATCH -c 8
 #SBATCH --mem=32G
