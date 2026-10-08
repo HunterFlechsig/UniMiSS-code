@@ -2,7 +2,7 @@
 #SBATCH -J vindr-cxr
 #SBATCH -A grp_jliang12
 #SBATCH -p private
-#SBATCH -q grp_jliang12
+#SBATCH -q private
 #SBATCH -G 1
 #SBATCH -c 8
 #SBATCH --mem=32G
