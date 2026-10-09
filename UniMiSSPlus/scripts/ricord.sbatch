@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -J ricord
 #SBATCH -A grp_jliang12
-#SBATCH -p public
+#SBATCH -p general
 #SBATCH -q public
 #SBATCH -G 1
 #SBATCH -c 8
