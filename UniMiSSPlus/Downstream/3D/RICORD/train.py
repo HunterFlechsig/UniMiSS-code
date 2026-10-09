@@ -109,13 +109,37 @@ def val_mode_cls(valloader, model):
     return val_acc, val_auc, val_AP, val_sens, val_spec
 
 
+def atomic_torch_save(payload, destination):
+    temporary = destination + '.tmp'
+    torch.save(payload, temporary)
+    os.replace(temporary, destination)
+
+
+def optimizer_to_cuda(optimizer):
+    for state in optimizer.state.values():
+        for key, value in state.items():
+            if torch.is_tensor(value):
+                state[key] = value.cuda()
+
+
 def main():
     """Create the network and start the training."""
 
     cudnn.enabled = True
 
+    path = NAME
+    if not os.path.isdir(path):
+        os.makedirs(path)
+    resume_path = os.path.join(path, 'resume.pth')
+    checkpoint = None
+    if os.path.isfile(resume_path):
+        checkpoint = torch.load(resume_path, map_location='cpu')
+        if checkpoint.get('finished'):
+            print('RICORD classification already finished')
+            return
+
     ############# Create coarse segmentation network
-    model = model_plus(norm_cfg3D='IN3', activation_cfg='LeakyReLU', img_size3D=[d, w, h], num_classes=NUM_CLASSES, pretrain=args.pre_train, pretrain_path=args.pre_train_path)
+    model = model_plus(norm_cfg3D='IN3', activation_cfg='LeakyReLU', img_size3D=[d, w, h], num_classes=NUM_CLASSES, pretrain=args.pre_train and checkpoint is None, pretrain_path=args.pre_train_path)
 
     total = sum([param.nelement() for param in model.parameters()])
     print('  + Number of Network Params: %.2f(e6)' % (total / 1e6))
@@ -132,6 +156,24 @@ def main():
     print(optimizer)
 
     model.cuda()
+
+    start_epoch = 0
+    val_score = []
+    patience_counter = 0
+    best_val_auc = 0
+    best_model = None
+    if checkpoint is not None:
+        model.load_state_dict(checkpoint['model'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        optimizer_to_cuda(optimizer)
+        start_epoch = int(checkpoint['epoch']) + 1
+        best_val_auc = float(checkpoint['best_val_auc'])
+        patience_counter = int(checkpoint['patience_counter'])
+        val_score = list(checkpoint['val_score'])
+        best_model = checkpoint.get('best_model')
+        if best_model is not None:
+            atomic_torch_save(best_model, os.path.join(path, 'Best.pth'))
+        print('resuming RICORD classification at epoch %d' % start_epoch)
 
     model.train()
     model.float()
@@ -150,17 +192,10 @@ def main():
     valloader = data.DataLoader(ValDataSet3D(data_root, data_val_list, crop_size_3D=(d, w, h)), batch_size=BATCH_SIZE, shuffle=False, num_workers=8,
                                 pin_memory=True)
 
-    path = NAME
-    if not os.path.isdir(path):
-        os.makedirs(path)
     f_path = os.path.join(path, 'outputxx.txt')
 
-    val_score = []
-    patience_counter = 0
-    best_val_auc = 0
-
     ############# Start the training
-    for epoch in range(EPOCH):
+    for epoch in range(start_epoch, EPOCH):
 
         train_loss_total = []
 
@@ -209,21 +244,34 @@ def main():
 
 
         if np.nanmean(val_auc) > best_val_auc:
-            torch.save(model.state_dict(), os.path.join(path, 'Best.pth'))
+            best_model = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
             best_epoch = epoch
             print("Epoch {:04d}: val_auc improved from {:.5f} to {:.5f}".format(best_epoch, best_val_auc, np.nanmean(val_auc)))
             best_val_auc = np.nanmean(val_auc)
             patience_counter = 0
 
-        else: 
+        else:
             print("Epoch {:04d}: val_auc did not improve from {:.5f} ".format(epoch, best_val_auc))
             patience_counter += 1
-            if patience_counter >= args.patience:
-                print("Early Stopping")
-                break
 
         ############# Save final network
+        finished = patience_counter >= args.patience or epoch + 1 >= EPOCH
+        atomic_torch_save({
+            'epoch': epoch,
+            'model': {k: v.detach().cpu().clone() for k, v in model.state_dict().items()},
+            'optimizer': optimizer.state_dict(),
+            'best_val_auc': best_val_auc,
+            'best_model': best_model,
+            'patience_counter': patience_counter,
+            'val_score': val_score,
+            'finished': finished,
+        }, resume_path)
         torch.save(model.state_dict(), os.path.join(path, 'Final.pth'))
+        if best_model is not None:
+            atomic_torch_save(best_model, os.path.join(path, 'Best.pth'))
+        if patience_counter >= args.patience:
+            print("Early Stopping")
+            break
 
 
 if __name__ == '__main__':

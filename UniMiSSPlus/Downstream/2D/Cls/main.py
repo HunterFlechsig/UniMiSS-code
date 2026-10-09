@@ -230,25 +230,50 @@ def collect_tencrop_scores(dataloader, model):
     return np.concatenate(labels), np.concatenate(probabilities)
 
 
+def atomic_torch_save(payload, destination):
+    temporary = destination + '.tmp'
+    torch.save(payload, temporary)
+    os.replace(temporary, destination)
+
+
+def optimizer_to_cuda(optimizer):
+    for state in optimizer.state.values():
+        for key, value in state.items():
+            if torch.is_tensor(value):
+                state[key] = value.cuda()
+
+
 def main_pe_global():
     """Finetune MiT+ on the PE-global lists under dataset/VinDr-CXR."""
     cudnn.enabled = True
     data_root = args.data_root if args.data_root else 'dataset/VinDr-CXR/'
-    train_rows = read_label_list(args.train_list)
     test_rows = read_label_list(args.test_list)
-    fit_rows, val_rows = split_training_rows(train_rows, val_fraction=0.1, seed=args.seed)
     list_dir = os.path.dirname(args.train_list)
-    write_label_list(os.path.join(list_dir, 'fit_pe_global_one.txt'), fit_rows)
-    write_label_list(os.path.join(list_dir, 'val_pe_global_one.txt'), val_rows)
+    fit_path = os.path.join(list_dir, 'fit_pe_global_one.txt')
+    val_path = os.path.join(list_dir, 'val_pe_global_one.txt')
+    if os.path.isfile(fit_path) and os.path.isfile(val_path):
+        fit_rows = read_label_list(fit_path)
+        val_rows = read_label_list(val_path)
+    else:
+        train_rows = read_label_list(args.train_list)
+        fit_rows, val_rows = split_training_rows(train_rows, val_fraction=0.1, seed=args.seed)
+        write_label_list(fit_path, fit_rows)
+        write_label_list(val_path, val_rows)
     print('%d fit radiographs, %d validation radiographs, %d test radiographs' % (
         len(fit_rows), len(val_rows), len(test_rows)))
+
+    path = NAME
+    if not os.path.isdir(path):
+        os.makedirs(path)
+    resume_path = path + 'resume.pth'
+    resuming = os.path.isfile(resume_path)
 
     model = MiTPlus_encoder(num_classes=N_BITS)
     total = sum([param.nelement() for param in model.parameters()])
     print('  + Number of Network Params: %.2f(e6)' % (total / 1e6))
-    if pre_train:
+    if pre_train and not resuming:
         load_pretrained(model, pre_train_path)
-    else:
+    elif not resuming:
         print('before loading weights: %.12f' % (model.state_dict()['block1.0.mlp.fc1.weight'].mean()))
 
     if args.optimizer == 'SGD':
@@ -260,6 +285,25 @@ def main_pe_global():
     print(optimizer)
 
     model.cuda()
+    start_epoch = 0
+    best_score = -1.0
+    best_state = None
+    test_done = False
+    if resuming:
+        checkpoint = torch.load(resume_path, map_location='cpu')
+        model.load_state_dict(checkpoint['model'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        optimizer_to_cuda(optimizer)
+        start_epoch = int(checkpoint['epoch']) + 1
+        best_score = float(checkpoint['best_score'])
+        test_done = bool(checkpoint.get('test_done', False))
+        best_state = checkpoint.get('best_state')
+        print('resuming VinDr-CXR classification at epoch %d' % start_epoch)
+
+    if test_done:
+        print('VinDr-CXR classification already finished')
+        return
+
     model.train()
     model.float()
     loss_fn = torch.nn.BCEWithLogitsLoss().cuda()
@@ -274,14 +318,9 @@ def main_pe_global():
         PEGlobalDataset(data_root, test_rows, mode='test'),
         batch_size=3, shuffle=False, num_workers=NUM_WORK, pin_memory=True)
 
-    path = NAME
-    if not os.path.isdir(path):
-        os.makedirs(path)
     f_path = path + 'outputxx.txt'
-    best_score = -1.0
-    best_state = None
 
-    for epoch in range(EPOCH):
+    for epoch in range(start_epoch, EPOCH):
         train_loss_total = []
         for i_iter, batch in tqdm(enumerate(trainloader)):
             step = len(trainloader) * epoch + i_iter
@@ -306,8 +345,19 @@ def main_pe_global():
         if macro_auc > best_score:
             best_score = macro_auc
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
-            torch.save(best_state, path + 'ckp_weights.pth')
+        atomic_torch_save({
+            'epoch': epoch,
+            'model': {k: v.detach().cpu().clone() for k, v in model.state_dict().items()},
+            'optimizer': optimizer.state_dict(),
+            'best_score': best_score,
+            'best_state': best_state,
+            'test_done': False,
+        }, resume_path)
+        if best_state is not None:
+            atomic_torch_save(best_state, path + 'ckp_weights.pth')
 
+    if best_state is None:
+        raise RuntimeError('no checkpoint to score; training did not complete an epoch')
     model.load_state_dict(best_state)
     test_labels, test_probabilities = collect_tencrop_scores(testloader, model)
     macro_auc, macro_ap, per_auc = score_probabilities(test_labels, test_probabilities)
@@ -315,6 +365,9 @@ def main_pe_global():
     print(line)
     with open(f_path, 'a') as handle:
         handle.write(line)
+    finished = torch.load(resume_path, map_location='cpu')
+    finished['test_done'] = True
+    atomic_torch_save(finished, resume_path)
 
 
 def main():

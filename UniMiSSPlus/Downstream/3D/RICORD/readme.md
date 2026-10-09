@@ -26,7 +26,7 @@ The folder structure of the dataset should be like
 
 * Run `python train.py -train_list='lists/RICORD_train.txt' -val_list='lists/RICORD_val.txt' -GPU='0' -NUM_CLASSES=2 -BATCH_SIZE=8 -EPOCH=200 -TRAIN_NUM=512 -LEARNING_RATE=0.00001 -optimizer='AdamW' -save_path='models/' -pre_train=True -pre_train_path='../../../snapshots/UniMissPlus/UniMissPlus.pth'` for training.
 
-On Sol, from a login node: `sbatch /scratch/hflechsi/UniMiSS-code/UniMiSSPlus/scripts/ricord.sbatch`
+On Sol, from a login node: `sbatch /scratch/hflechsi/UniMiSS-code/UniMiSSPlus/scripts/ricord.sbatch`. Submitting that script again continues from the last finished epoch in `models/resume.pth`, including the early-stop counter. A submit after training has finished exits without another epoch.
 
 ### Validation 
 * Run `python test.py -test_list='lists/RICORD_test.txt' -GPU='0' -NUM_CLASSES=2 -BATCH_SIZE=8 -checkpoint_path='models/'` for validation.

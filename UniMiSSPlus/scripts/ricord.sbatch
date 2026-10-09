@@ -13,6 +13,7 @@
 # Full RICORD classification, matching Downstream/3D/RICORD/readme.md.
 # Submit from a Sol login node:
 #   sbatch /scratch/hflechsi/UniMiSS-code/UniMiSSPlus/scripts/ricord.sbatch
+# If the job stops early, submit this same script again. It continues from models/resume.pth.
 
 set -euo pipefail
 

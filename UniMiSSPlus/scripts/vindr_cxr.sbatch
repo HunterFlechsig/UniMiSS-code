@@ -13,6 +13,7 @@
 # Full VinDr-CXR classification.
 # Submit from a Sol login node:
 #   sbatch /scratch/hflechsi/UniMiSS-code/UniMiSSPlus/scripts/vindr_cxr.sbatch
+# If the job stops early, submit this same script again. It continues from models/VinDr-CXR/resume.pth.
 
 set -euo pipefail
 

@@ -60,7 +60,7 @@ Each list line is the image path relative to `dataset/VinDr-CXR/`, then the six 
 
 The same `main.py` reads a six-bit list as VinDr-CXR and a one-digit list as CXR-COVID-19. Training writes `fit_pe_global_one.txt` and `val_pe_global_one.txt` next to the training list.
 
-On Sol, from a login node: `sbatch /scratch/hflechsi/UniMiSS-code/UniMiSSPlus/scripts/vindr_cxr.sbatch`
+On Sol, from a login node: `sbatch /scratch/hflechsi/UniMiSS-code/UniMiSSPlus/scripts/vindr_cxr.sbatch`. Submitting that script again continues from the last finished epoch in `models/VinDr-CXR/resume.pth`. The test list is scored only after epoch 30, and a later submit does not score it a second time.
 
 
 ### Contact
