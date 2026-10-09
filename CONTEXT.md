@@ -1,6 +1,6 @@
-# Chest radiograph classification
+# Chest image classification
 
-Two labeled chest X-ray collections, each with its own classification. RICORD classification is a separate CT classification and is not one of these collections.
+Labeled chest radiographs and chest CT volumes. Each collection has its own classification. CXR-COVID-19, VinDr-CXR, and RICORD remain part of this language.
 
 ## Language
 
@@ -53,7 +53,7 @@ The prepared test radiographs, scored once after the checkpoint is chosen.
 _Avoid_: validation
 
 **Headline score**:
-The unweighted mean of per-bit ROC-AUCs. CXR-COVID-19 classification's AUC is this same mean over its three categories.
+The unweighted mean of per-label ROC-AUCs on a collection's own labels. CXR-COVID-19 classification's AUC is this mean over its three categories. The PE-global headline score is this mean over its six bits.
 _Avoid_: micro AUC, accuracy
 
 **Reported scores**:
@@ -83,3 +83,115 @@ _Avoid_: VinDr-CXR classification, CXR-COVID-19 classification
 **Smoke run**:
 One epoch of VinDr-CXR classification, including the test-list scoring that follows that epoch, and one epoch of RICORD classification. Started by hand on a Sol compute node.
 _Avoid_: Slurm job
+
+**CheXpert**:
+The Stanford collection of chest radiographs labeled for 14 observations. Each observation is positive, negative, uncertain, or unmentioned.
+_Avoid_: CheXpert-14, MIMIC-CXR
+
+**CT-RATE**:
+The collection of non-contrast chest CT volumes with report-extracted labels for 18 abnormalities.
+_Avoid_: RICORD, RAD-ChestCT
+
+**CT-RATE volume**:
+One chest CT volume from CT-RATE.
+_Avoid_: radiograph, RICORD volume
+
+**Labeled student-teacher**:
+Labeled training of a student and a teacher. The student encoder, consistency head, and current task head take the label loss. A consistency loss matches the two consistency heads. The teacher encoder and consistency head are an exponential moving average of the student, updated at the end of a collection epoch, and they get no gradient. This is not UniMiSS+ pretraining, and it is not the choice of which pretrained weights are loaded.
+_Avoid_: DINO, teacher checkpoint
+
+**Shared finding**:
+A finding that at least two collections name, even when the rest of their labels differ.
+_Avoid_: the same label list, overlapping representation
+
+**PadChest**:
+The San Juan Hospital collection of chest radiographs, labeled with its own radiographic findings. Those findings are not rewritten into the CheXpert observations.
+_Avoid_: BIMCV, MIMIC-CXR
+
+**RAD-ChestCT**:
+The Duke collection of chest CT volumes. The public release contains 3,630 volumes, with a publisher validation list and a publisher test list. The checkpoint is chosen on the validation list. The test list is scored once. This classification reads abnormality labels as image-level presence.
+_Avoid_: CT-RATE, the full 36,316
+
+**Primary pair**:
+CheXpert and CT-RATE.
+_Avoid_: the four collections, the secondary pair
+
+**Secondary pair**:
+PadChest and RAD-ChestCT.
+_Avoid_: the primary pair, MIMIC-CXR
+
+**Task head**:
+The classifier for one collection, trained on that collection's own labels.
+_Avoid_: a shared head, the merged label list
+
+**Consistency head**:
+The layer that maps the student encoder output and the teacher encoder output into one space for the consistency loss.
+_Avoid_: projector, task head
+
+**Individual run**:
+A labeled student-teacher with its own weights, trained on one collection and scored on that collection. It does not share weights with a cyclic run.
+_Avoid_: a shared model, continued training
+
+**Cyclic run**:
+A labeled student-teacher with its own weights. It visits the collections in the run, in cycle order, and is scored on every one of those collections. Its weights do not come from an individual run.
+_Avoid_: continued training, the individual run
+
+**Pretrained start**:
+The option to load the UniMiSS+ teacher encoder into both the student and the teacher, or to load it into neither. Task heads and consistency heads start untrained either way.
+_Avoid_: loading only the student, the UniMiSS+ student encoder
+
+**Uncertain observation**:
+A CheXpert mark that names an observation without calling it present or absent. It is not a training target, and it is not counted in that observation's ROC-AUC.
+_Avoid_: negative, unmentioned, blank
+
+**Unmentioned observation**:
+A CheXpert observation the labeler did not mention. It counts as negative.
+_Avoid_: uncertain observation
+
+**CheXpert validation list**:
+The 200 studies, 234 radiographs, labeled by a majority of three radiologists. The checkpoint is chosen here.
+_Avoid_: the test list, train.csv
+
+**CheXpert test list**:
+The 500 studies, 668 radiographs, labeled by a majority of five radiologists across 14 observations. Scored once after the checkpoint is chosen.
+_Avoid_: the validation list, the five competition observations
+
+**CT-RATE validation list**:
+The publisher's 1,304 patients, held out by patient. There is no separate public test list. The checkpoint is chosen here, and this list is the reported score.
+_Avoid_: the training patients
+
+**PadChest validation list**:
+Ten percent of PadChest patients, held out by patient. The checkpoint is chosen here, and this list is the reported score.
+_Avoid_: the hand-labeled reports
+
+**Metrics record**:
+The row written on the validation list after a collection has been trained. It holds the training loss, the validation loss, the headline score, each label's ROC-AUC, the macro average precision, and each label's average precision. A cyclic run appends one row per collection visit. An individual run appends one row per epoch.
+_Avoid_: the checkpoint
+
+**Round**:
+One pass of a cyclic run through the cycle order. Each collection in that pass is trained for one epoch.
+_Avoid_: a visit of several epochs
+
+**Resume**:
+Continuing a run that stopped, from the last finished epoch, with that run's weights. The metrics record stays in place.
+_Avoid_: pretrained start, a new run
+
+**Concurrent run**:
+A labeled student-teacher whose mini-batch draws from every collection in the run, with each image scored by its own task head.
+_Avoid_: the cyclic run
+
+**Cycle order**:
+The sequence in which a cyclic run visits collections. It is an argument of that experiment.
+_Avoid_: a fixed order
+
+**Experiment**:
+A named run with its own weights, its own run list, and its own arguments. A new experiment does not load another experiment's checkpoint. Resume continues the experiment with that name.
+_Avoid_: the primary-pair checkpoint, a shared model
+
+**Run list**:
+The collections in one run, chosen for that run. It may be the primary pair, the secondary pair, both, or a longer list.
+_Avoid_: the four collections, a fixed set
+
+**Added collection**:
+A chest radiograph collection or a chest CT collection beyond the primary and secondary pairs. It keeps its own labels, its own task head, and its own validation list.
+_Avoid_: a merged label list, a shared head
