@@ -212,7 +212,8 @@ def main():
     parser = argparse.ArgumentParser(description='Score VinDr-CXR and RICORD checkpoints for the report.')
     parser.add_argument('-GPU', default='0')
     parser.add_argument('--only', choices=('both', 'vindr', 'ricord'), default='both')
-    parser.add_argument('--num-workers', type=int, default=4)
+    parser.add_argument('--num-workers', type=int, default=0,
+                        help='DataLoader workers. Keep 0: the ten-crop transform uses a lambda, which Python 3.14 cannot send to a worker process.')
     parser.add_argument('--vindr-checkpoint', type=Path, default=VINDR_CHECKPOINT)
     parser.add_argument('--vindr-list', type=Path, default=VINDR_LIST_DIR / 'test_pe_global_one.txt')
     parser.add_argument('--vindr-root', type=Path, default=VINDR_ROOT)
