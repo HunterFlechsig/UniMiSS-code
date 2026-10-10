@@ -71,6 +71,7 @@ def score_vindr(args):
     model.load_state_dict(state)
     model.cuda()
     model.eval()
+    print('scoring %d VinDr-CXR test radiographs with ten-crop' % len(dataset), flush=True)
     labels, probabilities = collect_tencrop_scores(loader, model)
     del model
     torch.cuda.empty_cache()
@@ -124,14 +125,17 @@ def collect_tencrop_scores(dataloader, model):
     import torch
     probabilities = []
     labels = []
+    total = len(dataloader)
     with torch.no_grad():
-        for images, batch_labels in dataloader:
+        for index, (images, batch_labels) in enumerate(dataloader, start=1):
             batch_size, n_crops, channels, height, width = images.size()
             images = images.view(-1, channels, height, width).cuda()
             averaged = sigmoid_with_flips(model, images)
             averaged = averaged.view(batch_size, n_crops, -1).mean(1)
             probabilities.append(averaged.cpu().numpy())
             labels.append(batch_labels.numpy())
+            if index == 1 or index % 50 == 0 or index == total:
+                print('VinDr-CXR test %d/%d' % (index, total), flush=True)
     return np.concatenate(labels), np.concatenate(probabilities)
 
 
@@ -162,13 +166,16 @@ def score_ricord(args):
         model.cuda()
         model.float()
         model.eval()
+        print('scoring %d RICORD test volumes' % len(dataset), flush=True)
         probabilities = []
         labels = []
+        total = len(loader)
         with torch.no_grad():
-            for images, batch_labels in loader:
+            for index, (images, batch_labels) in enumerate(loader, start=1):
                 pred = torch.softmax(model(images.cuda()), dim=-1)
                 probabilities.append(pred.cpu().numpy())
                 labels.append(batch_labels.numpy())
+                print('RICORD test %d/%d' % (index, total), flush=True)
     finally:
         os.chdir(previous)
     probabilities = np.concatenate(probabilities, 0)
